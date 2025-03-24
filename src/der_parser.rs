@@ -140,12 +140,12 @@ mod tests {
 
     #[test]
     fn test_read_tag_long_form() {
-        let data = [0x1F, 0x85, 0x01]; // Universal, primitive, tag number 0x0501 = 1281
+        let data = [0x1F, 0x85, 0x01]; // Universal, primitive, tag number 0x0281 = 621
         let mut parser = DerParser::new(&data);
 
         let tag = parser.read_tag().unwrap();
         assert_eq!(tag.class, TagClass::Universal);
         assert_eq!(tag.constructed, false);
-        assert_eq!(tag.number, 0x0501);
+        assert_eq!(tag.number, 0x0281);
     }
 }
