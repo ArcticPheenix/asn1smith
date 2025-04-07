@@ -87,6 +87,33 @@ impl<'a> DerParser<'a> {
             number,
         })
     }
+
+    pub fn read_length(&mut self) -> Option<usize> {
+        let first = self.read_byte()? as usize;
+
+        if first & 0x80 == 0 {
+            // Short form: length is in the lower 7 bits
+            Some(first)
+        } else {
+            let num_bytes = first & 0x7F;
+            if num_bytes == 0 {
+                // Indefinite length not allowed by DER
+                return None;
+            }
+
+            let bytes = self.read_n(num_bytes)?;
+            let mut length = 0usize;
+
+            for &b in bytes {
+                length = (length << 8) | b as usize;
+            }
+            Some(length)
+        }
+    }
+
+    pub fn read_value(&mut self, length: usize) -> Option<&'a [u8]> {
+        self.read_n(length)   
+    }
 }
 
 #[cfg(test)]
@@ -147,5 +174,26 @@ mod tests {
         assert_eq!(tag.class, TagClass::Universal);
         assert_eq!(tag.constructed, false);
         assert_eq!(tag.number, 0x0281);
+    }
+
+    #[test]
+    fn test_read_length_short() {
+        let data = [0x0A]; // short-form: length = 10
+        let mut parser = DerParser::new(&data);
+        assert_eq!(parser.read_length(), Some(10));
+    }
+
+    #[test]
+    fn test_read_length_long() {
+        let data = [0x82, 0x01, 0xF4]; // long-form: 0x01F4 = 500
+        let mut parser = DerParser::new(&data);
+        assert_eq!(parser.read_length(), Some(500));
+    }
+
+    #[test]
+    fn test_read_length_invalid_indefinite() {
+        let data = [0x80]; // indefinite-length not allowed in DER
+        let mut parser = DerParser::new(&data);
+        assert_eq!(parser.read_length(), None);
     }
 }
