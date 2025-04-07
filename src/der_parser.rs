@@ -20,6 +20,18 @@ pub struct Tag {
     pub number: u32,
 }
 
+#[derive(Debug, PartialEq)]
+pub struct ASN1Object<'a> {
+    pub tag: Tag,
+    pub value: ASN1Value<'a>,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ASN1Value<'a> {
+    Primitive(&'a [u8]),
+    Constructed(Vec<ASN1Object<'a>>),
+}
+
 impl<'a> DerParser<'a> {
     pub fn new(input: &'a [u8]) -> Self {
         Self {
@@ -113,6 +125,10 @@ impl<'a> DerParser<'a> {
 
     pub fn read_value(&mut self, length: usize) -> Option<&'a [u8]> {
         self.read_n(length)   
+    }
+
+    pub fn parse_tlv(&mut self) -> Option<ASN1Object<'a>> {
+        // TODO - Recursively parse the input data.
     }
 }
 
