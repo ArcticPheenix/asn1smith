@@ -137,7 +137,6 @@ impl<'a> DerParser<'a> {
     }
 
     pub fn parse_tlv(&mut self) -> Result<ASN1Object<'a>, ASN1Error> {
-        // TODO - Parse a single TLV
         let tag = self.read_tag().ok_or(ASN1Error::InvalidTag)?;
         let length = self.read_length().ok_or(ASN1Error::InvalidLength)?;
         let value = self.read_value(length).ok_or(ASN1Error::UnexpectedEOF)?;
@@ -155,7 +154,15 @@ impl<'a> DerParser<'a> {
     }
 
     pub fn parse_all(&mut self) -> Result<Vec<ASN1Object<'a>>, ASN1Error> {
-        // TODO - Recursively parse all input data
+        let mut der_data = Vec::new();
+        while !self.is_done() {
+            let object = self.parse_tlv();
+            match object {
+                Ok(object) => der_data.push(object),
+                Err(err) => return Err(err)
+            }
+        }
+        Ok(der_data)
     }
 }
 
@@ -238,5 +245,66 @@ mod tests {
         let data = [0x80]; // indefinite-length not allowed in DER
         let mut parser = DerParser::new(&data);
         assert_eq!(parser.read_length(), None);
+    }
+
+    #[test]
+    fn test_parse_tlv_primitive_integer() {
+        let data = [0x02, 0x01, 0x05]; // INTEGER, length 1, value 5
+        let mut parser = DerParser::new(&data);
+        let obj = parser.parse_tlv().unwrap();
+
+        assert_eq!(obj.tag.class, TagClass::Universal);
+        assert!(!obj.tag.constructed);
+        assert_eq!(obj.tag.number, 2);
+
+        match obj.value {
+            ASN1Value::Primitive(val) => assert_eq!(val, &[0x05]),
+            _ => panic!("Expected primitive value"),
+        }
+    }
+
+
+    #[test]
+    fn test_parse_tlv_constructed_sequence() {
+        let data = [0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x02];
+        let mut parser = DerParser::new(&data);
+        let obj = parser.parse_tlv().unwrap();
+
+        assert_eq!(obj.tag.class, TagClass::Universal);
+        assert!(obj.tag.constructed);
+        assert_eq!(obj.tag.number, 16); // SEQUENCE
+
+        match obj.value {
+            ASN1Value::Constructed(children) => {
+                assert_eq!(children.len(), 2);
+                assert_eq!(children[0].tag.number, 2); // INTEGER
+                assert_eq!(children[1].tag.number, 2); // INTEGER
+            },
+            _ => panic!("Expected constructed value"),
+        }
+    }
+
+    #[test]
+    fn test_parse_all_multiple_primitive_integers() {
+        let data = [
+            0x02, 0x01, 0x01, // INTEGER 1
+            0x02, 0x01, 0x02, // INTEGER 2
+            0x02, 0x01, 0x03  // INTEGER 3
+        ];
+        let mut parser = DerParser::new(&data);
+        let result = parser.parse_all().unwrap();
+
+        assert_eq!(result.len(), 3);
+
+        for (i, obj) in result.iter().enumerate() {
+            assert_eq!(obj.tag.class, TagClass::Universal);
+            assert!(!obj.tag.constructed);
+            assert_eq!(obj.tag.number, 2); // INTEGER
+
+            match obj.value {
+                ASN1Value::Primitive(val) => assert_eq!(val, &[i as u8 + 1]),
+                _ => panic!("Expected primitive value"),
+            }
+        }
     }
 }
