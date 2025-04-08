@@ -32,6 +32,15 @@ pub enum ASN1Value<'a> {
     Constructed(Vec<ASN1Object<'a>>),
 }
 
+#[derive(Debug, PartialEq)]
+pub enum ASN1Error {
+    UnexpectedEOF,
+    InvalidTag,
+    InvalidLength,
+    IndefiniteLengthNotAllowed,
+    TrailingData,
+}
+
 impl<'a> DerParser<'a> {
     pub fn new(input: &'a [u8]) -> Self {
         Self {
@@ -127,8 +136,26 @@ impl<'a> DerParser<'a> {
         self.read_n(length)   
     }
 
-    pub fn parse_tlv(&mut self) -> Option<ASN1Object<'a>> {
-        // TODO - Recursively parse the input data.
+    pub fn parse_tlv(&mut self) -> Result<ASN1Object<'a>, ASN1Error> {
+        // TODO - Parse a single TLV
+        let tag = self.read_tag().ok_or(ASN1Error::InvalidTag)?;
+        let length = self.read_length().ok_or(ASN1Error::InvalidLength)?;
+        let value = self.read_value(length).ok_or(ASN1Error::UnexpectedEOF)?;
+        let value = if tag.constructed {
+            let mut parser = DerParser::new(value);
+            let result = parser.parse_all()?;
+            ASN1Value::Constructed(result)
+        } else {
+            ASN1Value::Primitive(value)
+        };
+        Ok(ASN1Object {
+            tag,
+            value,
+        })
+    }
+
+    pub fn parse_all(&mut self) -> Result<Vec<ASN1Object<'a>>, ASN1Error> {
+        // TODO - Recursively parse all input data
     }
 }
 
