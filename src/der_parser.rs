@@ -141,7 +141,7 @@ impl<'a> DerParser<'a> {
         let length = self.read_length().ok_or(ASN1Error::InvalidLength)?;
         let value = self.read_value(length).ok_or(ASN1Error::UnexpectedEOF)?;
         let value = if tag.constructed {
-            println!("Constructed tag value length = {}, bytes = {:02X?}", value.len(), value);
+            // println!("Constructed tag value length = {}, bytes = {:02X?}", value.len(), value);
             let mut parser = DerParser::new(value);
             let result = parser.parse_all()?;
             ASN1Value::Constructed(result)
@@ -157,7 +157,7 @@ impl<'a> DerParser<'a> {
     pub fn parse_all(&mut self) -> Result<Vec<ASN1Object<'a>>, ASN1Error> {
         let mut der_data = Vec::new();
         while !self.is_done() {
-            println!("Parsing new TLV at position {}", self.position);
+            // println!("Parsing new TLV at position {}", self.position);
             let object = self.parse_tlv();
             match object {
                 Ok(object) => der_data.push(object),

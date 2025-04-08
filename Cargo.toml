@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 base64 = "0.22.1"
+num-bigint = "0.4.6"
