@@ -141,6 +141,7 @@ impl<'a> DerParser<'a> {
         let length = self.read_length().ok_or(ASN1Error::InvalidLength)?;
         let value = self.read_value(length).ok_or(ASN1Error::UnexpectedEOF)?;
         let value = if tag.constructed {
+            println!("Constructed tag value length = {}, bytes = {:02X?}", value.len(), value);
             let mut parser = DerParser::new(value);
             let result = parser.parse_all()?;
             ASN1Value::Constructed(result)
@@ -156,6 +157,7 @@ impl<'a> DerParser<'a> {
     pub fn parse_all(&mut self) -> Result<Vec<ASN1Object<'a>>, ASN1Error> {
         let mut der_data = Vec::new();
         while !self.is_done() {
+            println!("Parsing new TLV at position {}", self.position);
             let object = self.parse_tlv();
             match object {
                 Ok(object) => der_data.push(object),
@@ -305,6 +307,42 @@ mod tests {
                 ASN1Value::Primitive(val) => assert_eq!(val, &[i as u8 + 1]),
                 _ => panic!("Expected primitive value"),
             }
+        }
+    }
+
+    #[test]
+    fn test_parse_all_nested_sequence() {
+        let data = [
+            0x30, 0x0B,             // SEQUENCE, length 11
+              0x02, 0x01, 0x01,     // INTEGER 1
+              0x30, 0x06,           // SEQUENCE, length 6
+                0x02, 0x01, 0x02,   // INTEGER 2
+                0x02, 0x01, 0x03    // INTEGER 3
+        ];
+
+        let mut parser = DerParser::new(&data);
+        let result = parser.parse_all().unwrap();
+
+        assert_eq!(result.len(), 1);
+        let outer = &result[0];
+        assert_eq!(outer.tag.number, 16); // SEQUENCE
+
+        match &outer.value {
+            ASN1Value::Constructed(inner) => {
+                assert_eq!(inner.len(), 2);
+                assert_eq!(inner[0].tag.number, 2); // INTEGER
+                assert_eq!(inner[1].tag.number, 16); // Nested SEQUENCE
+
+                match &inner[1].value {
+                    ASN1Value::Constructed(nested) => {
+                        assert_eq!(nested.len(), 2);
+                        assert_eq!(nested[0].tag.number, 2);
+                        assert_eq!(nested[1].tag.number, 2);
+                    }
+                    _ => panic!("Expected nested constructed value"),
+                }
+            }
+            _ => panic!("Expected outer constructed value"),
         }
     }
 }
