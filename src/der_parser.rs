@@ -5,7 +5,7 @@ pub struct DerParser<'a> {
     position: usize,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum TagClass {
     Universal,
     Application,
@@ -13,7 +13,7 @@ pub enum TagClass {
     Private,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Tag {
     pub class: TagClass,
     pub constructed: bool,
@@ -39,6 +39,31 @@ pub enum ASN1Error {
     InvalidLength,
     IndefiniteLengthNotAllowed,
     TrailingData,
+}
+
+pub enum OwnedValue {
+    Primitive(Vec<u8>),
+    Constructed(Vec<OwnedObject>),
+}
+
+pub struct OwnedObject {
+    pub tag: Tag,
+    pub value: OwnedValue,
+}
+
+impl<'a> From<&ASN1Object<'a>> for OwnedObject {
+    fn from(src: &ASN1Object<'a>) -> Self {
+        match &src.value {
+            ASN1Value::Primitive(s) => OwnedObject {
+                tag: src.tag.clone(),
+                value: OwnedValue::Primitive(s.to_vec()),
+            },
+            ASN1Value::Constructed(children) => OwnedObject {
+                tag: src.tag.clone(),
+                value: OwnedValue::Constructed(children.iter().map(OwnedObject::from).collect()),
+            }
+        }
+    }
 }
 
 impl<'a> DerParser<'a> {
