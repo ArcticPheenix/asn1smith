@@ -1,8 +1,9 @@
 // src/tui_app.rs
 
-use ratatui::{prelude::*, widgets::*};
-use crossterm::event::{self, Event, KeyCode, KeyEvent};
+use ratatui::{prelude::*, text::{Span}, widgets::*};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use std::time::Duration;
+use base64::Engine;
 
 use crate::der_parser::{ASN1Object, OwnedObject};
 
@@ -37,21 +38,18 @@ impl App {
         match self.mode {
             AppMode::Input => match key.code {
                 KeyCode::Esc => self.mode = AppMode::View,
-                KeyCode::Char(c) => self.input_buffer.push(c),
-                KeyCode::Backspace => { self.input_buffer.pop(); }
-                KeyCode::Tab => self.mode = AppMode::View,
-                KeyCode::Enter => {
-                    self.input_buffer.push('\n');
-                },
-                KeyCode::Char('p') => {
-                    eprintln!("Parsing pasted input");
+                KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::ALT) => {
+                    eprintln!("Control-P pressed: parsing input");
                     eprintln!("Raw input buffer: {}", self.input_buffer);
                     if let Ok(decoded) = try_decode_input(&self.input_buffer) {
                         self.buffer = decoded;
                         let mut parser = crate::der_parser::DerParser::new(&self.buffer);
                         match parser.parse_all() {
                             Ok(borrowed_objs) => {
-                                self.parsed_objects = borrowed_objs.iter().map(crate::der_parser::OwnedObject::from).collect();
+                                self.parsed_objects = borrowed_objs
+                                    .iter()
+                                    .map(crate::der_parser::OwnedObject::from)
+                                    .collect();
                                 self.selected_path = vec![0];
                                 self.mode = AppMode::View;
                             }
@@ -60,18 +58,26 @@ impl App {
                     } else {
                         eprintln!("Input decoding failed.");
                     }
-                },
+                }
+                KeyCode::Backspace => {
+                    self.input_buffer.pop();
+                }
+                KeyCode::Tab => self.mode = AppMode::View,
+                KeyCode::Enter => {
+                    self.input_buffer.push('\n');
+                }
+                KeyCode::Char(c) => self.input_buffer.push(c),
                 _ => {}
             },
             AppMode::View => match key.code {
                 KeyCode::Char('q') => self.should_quit = true,
                 KeyCode::Char('i') => self.mode = AppMode::Input,
-                KeyCode::Char('h') => {} // collapse
-                KeyCode::Char('l') => {} // expand
-                KeyCode::Char('j') => {} // move down
-                KeyCode::Char('k') => {} // move up
-                KeyCode::Char('d') => {} // delete
-                KeyCode::Char('a') => {} // add child
+                KeyCode::Char('h') => {}, // collapse
+                KeyCode::Char('l') => {}, // expand
+                KeyCode::Char('j') => {}, // move down
+                KeyCode::Char('k') => {}, // move up
+                KeyCode::Char('d') => {}, // delete
+                KeyCode::Char('a') => {}, // add child
                 KeyCode::Tab => self.mode = AppMode::Hex,
                 _ => {}
             },
@@ -99,8 +105,20 @@ impl App {
     }
 
     fn draw_input(&self, f: &mut Frame, area: Rect) {
+        let is_active = matches!(self.mode, AppMode::Input);
+        let active_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
+        let title = if is_active {
+            Span::styled("Input", active_style)
+        } else {
+            Span::raw("Input")
+        };
+
         let paragraph = Paragraph::new(self.input_buffer.as_str())
-            .block(Block::default().borders(Borders::ALL).title("Input"))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(title)
+            )
             .wrap(Wrap { trim: false });
         f.render_widget(paragraph, area);
     }
@@ -108,21 +126,43 @@ impl App {
     fn draw_tree(&self, f: &mut Frame, area: Rect) {
         let mut items = vec![];
         let mut path = vec![];
-    
+
         for (i, obj) in self.parsed_objects.iter().enumerate() {
             path.push(i);
             render_object(obj, 0, &mut path, &self.selected_path, &mut items);
             path.pop();
         }
-    
+
+        let is_active = matches!(self.mode, AppMode::View);
+        let active_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
+        let title = if is_active {
+            Span::styled("ASN.1 Tree View", active_style)
+        } else {
+            Span::raw("ASN.1 Tree View")
+        };
+
         let list = List::new(items)
-            .block(Block::default().borders(Borders::ALL).title("ASN.1 Tree View"));
-    
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(title)
+            );
+
         f.render_widget(list, area);
     }
 
     fn draw_hex(&self, f: &mut Frame, area: Rect) {
-        let block = Block::default().borders(Borders::ALL).title("Raw DER Hex View");
+        let is_active = matches!(self.mode, AppMode::Hex);
+        let active_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
+        let title = if is_active {
+            Span::styled("Raw DER Hex View", active_style)
+        } else {
+            Span::raw("Raw DER Hex View")
+        };
+
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title(title);
         f.render_widget(block, area);
     }
 }
@@ -140,7 +180,7 @@ fn try_decode_input(input: &str) -> Result<Vec<u8>, ()> {
     }
 
     // Try base64 next
-    if let Ok(bytes) = base64::decode(&cleaned) {
+    if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(&cleaned) {
         return Ok(bytes);
     }
 
@@ -154,7 +194,6 @@ fn render_object<'a>(
     selected_path: &[usize],
     items: &mut Vec<ListItem<'a>>,
 ) {
-    eprintln!("Rendering tag {} at depth {}", object.tag.number, depth);
     use ratatui::style::{Style, Color, Modifier};
 
     let indent = "  ".repeat(depth);
@@ -179,7 +218,6 @@ fn render_object<'a>(
         }
     }
 }
-
 
 pub fn run_ui<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> std::io::Result<()> {
     loop {
