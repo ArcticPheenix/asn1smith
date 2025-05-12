@@ -23,6 +23,7 @@ pub struct Tag {
 #[derive(Debug, PartialEq)]
 pub struct ASN1Object<'a> {
     pub tag: Tag,
+    pub length: usize,
     pub value: ASN1Value<'a>,
 }
 
@@ -48,21 +49,21 @@ pub enum OwnedValue {
 
 pub struct OwnedObject {
     pub tag: Tag,
+    pub length: usize,
     pub value: OwnedValue,
 }
 
 impl<'a> From<&ASN1Object<'a>> for OwnedObject {
     fn from(src: &ASN1Object<'a>) -> Self {
-        match &src.value {
-            ASN1Value::Primitive(s) => OwnedObject {
-                tag: src.tag.clone(),
-                value: OwnedValue::Primitive(s.to_vec()),
-            },
-            ASN1Value::Constructed(children) => OwnedObject {
-                tag: src.tag.clone(),
-                value: OwnedValue::Constructed(children.iter().map(OwnedObject::from).collect()),
+        let length = src.length;
+        let value = match &src.value {
+            ASN1Value::Primitive(s) => OwnedValue::Primitive(s.to_vec()),
+            ASN1Value::Constructed(children) => {
+                let owned_children = children.iter().map(OwnedObject::from).collect();
+                OwnedValue::Constructed(owned_children)
             }
-        }
+        };
+        OwnedObject { tag: src.tag.clone(), length, value }
     }
 }
 
@@ -175,6 +176,7 @@ impl<'a> DerParser<'a> {
         };
         Ok(ASN1Object {
             tag,
+            length,
             value,
         })
     }

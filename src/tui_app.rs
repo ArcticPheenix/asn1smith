@@ -6,6 +6,7 @@ use std::time::Duration;
 use base64::Engine;
 
 use crate::der_parser::{ASN1Object, OwnedObject};
+use crate::format::tui_list_items;
 
 pub enum AppMode {
     Input,
@@ -123,33 +124,19 @@ impl App {
         f.render_widget(paragraph, area);
     }
 
-    fn draw_tree(&self, f: &mut Frame, area: Rect) {
-        let mut items = vec![];
-        let mut path = vec![];
-
-        for (i, obj) in self.parsed_objects.iter().enumerate() {
-            path.push(i);
-            render_object(obj, 0, &mut path, &self.selected_path, &mut items);
-            path.pop();
-        }
-
-        let is_active = matches!(self.mode, AppMode::View);
-        let active_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
-        let title = if is_active {
-            Span::styled("ASN.1 Tree View", active_style)
-        } else {
-            Span::raw("ASN.1 Tree View")
-        };
-
-        let list = List::new(items)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(title)
-            );
-
-        f.render_widget(list, area);
-    }
+fn draw_tree(&self, f: &mut Frame, area: Rect) {
+    let is_active = matches!(self.mode, AppMode::View);
+    let active_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
+    let title = if is_active {
+        Span::styled("ASN.1 Tree View", active_style)
+    } else {
+        Span::raw("ASN.1 Tree View")
+    };
+    let items = tui_list_items(&self.parsed_objects, &self.selected_path);
+    let list = List::new(items)
+        .block(Block::default().borders(Borders::ALL).title(title));
+    f.render_widget(list, area);
+}
 
     fn draw_hex(&self, f: &mut Frame, area: Rect) {
         let is_active = matches!(self.mode, AppMode::Hex);

@@ -1,6 +1,8 @@
 // src/format.rs
 
-use crate::der_parser::{ASN1Object, TagClass, ASN1Value};
+use crate::der_parser::{ASN1Object, TagClass, ASN1Value, OwnedObject, OwnedValue};
+use ratatui::widgets::ListItem;
+use ratatui::style::{Style, Color, Modifier};
 
 pub fn print_asn1_object(obj: &ASN1Object, indent: usize, pretty: bool) {
     let indent_str = "  ".repeat(indent);
@@ -134,4 +136,87 @@ fn interpret_value(obj: &ASN1Object, indent_str: &str, pretty: bool, bytes: &[u8
             println!("{}  {}Primitive:{} ({} bytes): {:02X?}", indent_str, tag_color, reset, bytes.len(), bytes);
         }
     }
+}
+
+/// Walks an OwnedObject tree and returns a flat Vec of ListItems,
+/// with indentation, tag names, lengths and values already formatted.
+pub fn tui_list_items(objects: &[OwnedObject], selected_path: &[usize]) -> Vec<ListItem<'static>> {
+    let mut items = Vec::new();
+    let mut path = Vec::new();
+
+    fn rec(
+        obj: &OwnedObject,
+        depth: usize,
+        path: &mut Vec<usize>,
+        selected_path: &[usize],
+        items: &mut Vec<ListItem<'static>>,
+    ) {
+        // reuse your CLI formatting logic to build the label:
+        let tag_name: Option<&str> = match (&obj.tag.class, obj.tag.number) {
+        (TagClass::Universal, 1) => Some("BOOLEAN"),
+        (TagClass::Universal, 2) => Some("INTEGER"),
+        (TagClass::Universal, 3) => Some("BIT STRING"),
+        (TagClass::Universal, 4) => Some("OCTET STRING"),
+        (TagClass::Universal, 5) => Some("NULL"),
+        (TagClass::Universal, 6) => Some("OBJECT IDENTIFIER"),
+        (TagClass::Universal, 10) => Some("ENUMERATED"),
+        (TagClass::Universal, 16) => Some("SEQUENCE"),
+        (TagClass::Universal, 17) => Some("SET"),
+        (TagClass::Universal, 19) => Some("PrintableString"),
+        (TagClass::Universal, 20) => Some("T61String"),
+        (TagClass::Universal, 22) => Some("IA5String"),
+        (TagClass::Universal, 23) => Some("UTCTime"),
+        (TagClass::Universal, 24) => Some("GeneralizedTime"),
+        _                         => Some(""),
+        };
+
+// before you recurse, replace the old label logic with:
+
+        let indent = "  ".repeat(depth);
+
+        // build a combined “name (number)” if we know the name, otherwise just the number
+        let tag_display = if let Some(name) = tag_name {
+            format!("{} ({})", name, obj.tag.number)
+        } else {
+            obj.tag.number.to_string()
+        };
+
+        // finally glue them together with length
+        let mut label = format!("{}{} (len={})", indent, tag_display, obj.length);
+
+        // then if it’s a primitive, you can append “: value” as you already do
+        if let OwnedValue::Primitive(bytes) = &obj.value {
+            let v = if obj.tag.number == 2 {
+                num_bigint::BigUint::from_bytes_be(bytes).to_string()
+            } else {
+                format!("{:02X?}", bytes)
+            };
+            label.push_str(&format!(" : {}", v));
+        }
+
+        let is_selected = path == selected_path;
+        let style = if is_selected {
+            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+        };
+
+        items.push(ListItem::new(label).style(style));
+
+        if let OwnedValue::Constructed(children) = &obj.value {
+            for (i, child) in children.iter().enumerate() {
+                path.push(i);
+                rec(child, depth + 1, path, selected_path, items);
+                path.pop();
+            }
+        }
+    }
+
+    for (i, obj) in objects.iter().enumerate() {
+        path.push(i);
+        rec(obj, 0, &mut path, selected_path, &mut items);
+        path.pop();
+    }
+
+    items
 }
