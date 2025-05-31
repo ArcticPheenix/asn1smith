@@ -21,6 +21,7 @@ pub struct App {
     pub buffer: Vec<u8>,
     pub parsed_objects: Vec<crate::der_parser::OwnedObject>,
     pub selected_path: Vec<usize>,
+    pub collapsed_nodes: std::collections::HashSet<Vec<usize>>,
 }
 
 impl App {
@@ -32,15 +33,107 @@ impl App {
             parsed_objects: Vec::new(),
             selected_path: vec![],
             buffer: Vec::new(),
+            collapsed_nodes: std::collections::HashSet::new(),
         }
+    }
+
+    fn move_selection_up(&mut self) {
+        if let Some(current_idx) = self.selected_path.last_mut() {
+            if *current_idx > 0 {
+                *current_idx -= 1;
+            }
+        }
+    }
+
+    fn move_selection_down(&mut self) {
+        // First check if we can descend into children
+        let can_descend = {
+            let obj = self.get_selected_object();
+            obj.map_or(false, |o| {
+                if let crate::der_parser::OwnedValue::Constructed(ref children) = o.value {
+                    !children.is_empty() && !self.collapsed_nodes.contains(&self.selected_path)
+                } else {
+                    false
+                }
+            })
+        };
+
+        if can_descend {
+            self.selected_path.push(0);
+            return;
+        }
+
+        // If we can't descend, try moving to the next sibling
+        let next_sibling_valid = {
+            if let Some(obj) = self.get_selected_object() {
+                let parent_path = if self.selected_path.len() > 1 {
+                    &self.selected_path[..self.selected_path.len() - 1]
+                } else {
+                    &[]
+                };
+
+                let mut current = if parent_path.is_empty() {
+                    &self.parsed_objects
+                } else {
+                    let mut parent = &self.parsed_objects[0];
+                    for &idx in parent_path.iter().skip(1) {
+                        if let crate::der_parser::OwnedValue::Constructed(ref children) = parent.value {
+                            parent = &children[idx];
+                        }
+                    }
+                    if let crate::der_parser::OwnedValue::Constructed(ref children) = parent.value {
+                        children
+                    } else {
+                        return;
+                    }
+                };
+
+                if let Some(idx) = self.selected_path.last() {
+                    *idx + 1 < current.len()
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        };
+
+        if next_sibling_valid {
+            *self.selected_path.last_mut().unwrap() += 1;
+        } else if self.selected_path.len() > 1 {
+            self.selected_path.pop();
+            self.move_selection_down();
+        }
+    }
+
+    fn toggle_collapse(&mut self) {
+        if self.get_selected_object().map_or(false, |obj| {
+            matches!(obj.value, crate::der_parser::OwnedValue::Constructed(_))
+        }) {
+            if !self.collapsed_nodes.remove(&self.selected_path) {
+                self.collapsed_nodes.insert(self.selected_path.clone());
+            }
+        }
+    }
+
+    fn get_selected_object(&self) -> Option<&OwnedObject> {
+        let mut current = self.parsed_objects.get(0)?;
+        for &idx in self.selected_path.iter().skip(1) {
+            if let crate::der_parser::OwnedValue::Constructed(children) = &current.value {
+                current = children.get(idx)?;
+            } else {
+                return None;
+            }
+        }
+        Some(current)
     }
 
     pub fn handle_input(&mut self, key: KeyEvent) {
         match self.mode {
             AppMode::Input => match key.code {
                 KeyCode::Esc => self.mode = AppMode::View,
-                KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::ALT) => {
-                    eprintln!("Control-P pressed: parsing input");
+                KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    eprintln!("Ctrl-R pressed: parsing input");
                     eprintln!("Raw input buffer: {}", self.input_buffer);
                     if let Ok(decoded) = try_decode_input(&self.input_buffer) {
                         self.buffer = decoded;
@@ -73,10 +166,10 @@ impl App {
             AppMode::View => match key.code {
                 KeyCode::Char('q') => self.should_quit = true,
                 KeyCode::Char('i') => self.mode = AppMode::Input,
-                KeyCode::Char('h') => {}, // collapse
-                KeyCode::Char('l') => {}, // expand
-                KeyCode::Char('j') => {}, // move down
-                KeyCode::Char('k') => {}, // move up
+                KeyCode::Char('h') => self.toggle_collapse(),
+                KeyCode::Char('l') => self.toggle_collapse(),
+                KeyCode::Char('j') => self.move_selection_down(),
+                KeyCode::Char('k') => self.move_selection_up(),
                 KeyCode::Char('d') => {}, // delete
                 KeyCode::Char('a') => {}, // add child
                 KeyCode::Tab => self.mode = AppMode::Hex,
