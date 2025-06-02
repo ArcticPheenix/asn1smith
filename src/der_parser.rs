@@ -1,5 +1,7 @@
 // src/der_parser.rs
 
+use base64::Engine;
+
 pub struct DerParser<'a> {
     input: &'a [u8],
     position: usize,
@@ -193,6 +195,26 @@ impl<'a> DerParser<'a> {
         }
         Ok(der_data)
     }
+}
+
+pub fn try_decode_input(input: &str) -> Result<Vec<u8>, ()> {
+    let cleaned: String = input
+        .lines()
+        .filter(|line| !line.starts_with("-----")) // Strip PEM boundaries
+        .collect::<Vec<_>>()
+        .join("");
+
+    // Try hex first
+    if let Ok(bytes) = hex::decode(&cleaned) {
+        return Ok(bytes);
+    }
+
+    // Try base64 next
+    if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(&cleaned) {
+        return Ok(bytes);
+    }
+
+    Err(())
 }
 
 #[cfg(test)]
