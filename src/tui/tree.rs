@@ -99,9 +99,24 @@ fn render_object<'a>(
 
 impl App {
     pub fn move_selection_up(&mut self) {
+        if self.selected_path.is_empty() {
+            return;
+        }
         if let Some(current_idx) = self.selected_path.last_mut() {
             if *current_idx > 0 {
                 *current_idx -= 1;
+                // Move to the last visible descendant of the previous sibling
+                while let Some(obj) = self.get_selected_object() {
+                    if let crate::der_parser::OwnedValue::Constructed(children) = &obj.value {
+                        if !children.is_empty() && !self.collapsed_nodes.contains(&self.selected_path) {
+                            self.selected_path.push(children.len() - 1);
+                        } else {
+                            break;
+                        }
+                    } else {
+                        break;
+                    }
+                }
             } else if self.selected_path.len() > 1 {
                 self.selected_path.pop();
             }
@@ -109,6 +124,7 @@ impl App {
     }
 
     pub fn move_selection_down(&mut self) {
+        // Try to descend into children if possible
         let can_descend = {
             let obj = self.get_selected_object();
             obj.map_or(false, |o| {
@@ -119,51 +135,25 @@ impl App {
                 }
             })
         };
-
         if can_descend {
             self.selected_path.push(0);
             return;
         }
-
-        let next_sibling_valid = {
-            if let Some(_obj) = self.get_selected_object() {
-                let parent_path = if self.selected_path.len() > 1 {
-                    &self.selected_path[..self.selected_path.len() - 1]
-                } else {
-                    &[]
-                };
-
-                let current = if parent_path.is_empty() {
-                    &self.parsed_objects
-                } else {
-                    let mut parent = &self.parsed_objects[0];
-                    for &idx in parent_path.iter().skip(1) {
-                        if let crate::der_parser::OwnedValue::Constructed(ref children) = parent.value {
-                            parent = &children[idx];
-                        }
-                    }
-                    if let crate::der_parser::OwnedValue::Constructed(ref children) = parent.value {
-                        children
-                    } else {
-                        return;
-                    }
-                };
-
-                if let Some(idx) = self.selected_path.last() {
-                    *idx + 1 < current.len()
-                } else {
-                    false
+        // Otherwise, try to move to the next sibling or ancestor's next sibling
+        let mut path = self.selected_path.clone();
+        while !path.is_empty() {
+            let check_path = {
+                let mut p = path.clone();
+                if let Some(last) = p.last_mut() {
+                    *last += 1;
                 }
-            } else {
-                false
+                p
+            };
+            if get_object_by_path(&self.parsed_objects, &check_path).is_some() {
+                self.selected_path = check_path;
+                return;
             }
-        };
-
-        if next_sibling_valid {
-            *self.selected_path.last_mut().unwrap() += 1;
-        } else if self.selected_path.len() > 1 {
-            self.selected_path.pop();
-            self.move_selection_down();
+            path.pop();
         }
     }
 
@@ -188,4 +178,18 @@ impl App {
         }
         Some(current)
     }
+}
+
+fn get_object_by_path<'a>(objects: &'a [OwnedObject], path: &[usize]) -> Option<&'a OwnedObject> {
+    let mut current = objects.get(*path.get(0)?);
+    for &idx in path.iter().skip(1) {
+        current = match current {
+            Some(obj) => match &obj.value {
+                crate::der_parser::OwnedValue::Constructed(children) => children.get(idx),
+                _ => return None,
+            },
+            None => return None,
+        };
+    }
+    current
 }
