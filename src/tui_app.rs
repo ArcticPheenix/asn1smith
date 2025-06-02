@@ -21,6 +21,7 @@ pub struct App {
     pub parsed_objects: Vec<crate::der_parser::OwnedObject>,
     pub selected_path: Vec<usize>,
     pub collapsed_nodes: std::collections::HashSet<Vec<usize>>,
+    pub show_help: bool,
 }
 
 impl App {
@@ -33,6 +34,7 @@ impl App {
             selected_path: vec![],
             buffer: Vec::new(),
             collapsed_nodes: std::collections::HashSet::new(),
+            show_help: false,
         }
     }
 
@@ -132,8 +134,17 @@ impl App {
     }
 
     pub fn handle_input(&mut self, key: KeyEvent) {
+        if self.show_help {
+            // Any key closes the help modal
+            self.show_help = false;
+            return;
+        }
         match self.mode {
             AppMode::Input => match key.code {
+                KeyCode::Char('?') => self.show_help = true,
+                KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    self.input_buffer.clear();
+                }
                 KeyCode::Esc => self.mode = AppMode::View,
                 KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     eprintln!("Ctrl-R pressed: parsing input");
@@ -176,11 +187,13 @@ impl App {
                 KeyCode::Char('d') => {}, // delete
                 KeyCode::Char('a') => {}, // add child
                 KeyCode::Tab => self.mode = AppMode::Hex,
+                KeyCode::Char('?') => self.show_help = true,
                 _ => {}
             },
             AppMode::Hex => match key.code {
                 KeyCode::Tab => self.mode = AppMode::Input,
                 KeyCode::Char('q') => self.should_quit = true,
+                KeyCode::Char('?') => self.show_help = true,
                 _ => {}
             },
         }
@@ -199,6 +212,10 @@ impl App {
         self.draw_input(f, chunks[0]);
         self.draw_tree(f, chunks[1]);
         self.draw_hex(f, chunks[2]);
+
+        if self.show_help {
+            self.draw_help_modal(f);
+        }
     }
 
     fn draw_input(&self, f: &mut Frame, area: Rect) {
@@ -220,6 +237,26 @@ impl App {
         f.render_widget(paragraph, area);
     }
 
+    fn tag_name(class: &crate::der_parser::TagClass, number: u32) -> Option<&'static str> {
+        match (class, number) {
+            (crate::der_parser::TagClass::Universal, 1) => Some("BOOLEAN"),
+            (crate::der_parser::TagClass::Universal, 2) => Some("INTEGER"),
+            (crate::der_parser::TagClass::Universal, 3) => Some("BIT STRING"),
+            (crate::der_parser::TagClass::Universal, 4) => Some("OCTET STRING"),
+            (crate::der_parser::TagClass::Universal, 5) => Some("NULL"),
+            (crate::der_parser::TagClass::Universal, 6) => Some("OBJECT IDENTIFIER"),
+            (crate::der_parser::TagClass::Universal, 10) => Some("ENUMERATED"),
+            (crate::der_parser::TagClass::Universal, 16) => Some("SEQUENCE"),
+            (crate::der_parser::TagClass::Universal, 17) => Some("SET"),
+            (crate::der_parser::TagClass::Universal, 19) => Some("PrintableString"),
+            (crate::der_parser::TagClass::Universal, 20) => Some("T61String"),
+            (crate::der_parser::TagClass::Universal, 22) => Some("IA5String"),
+            (crate::der_parser::TagClass::Universal, 23) => Some("UTCTime"),
+            (crate::der_parser::TagClass::Universal, 24) => Some("GeneralizedTime"),
+            _ => None,
+        }
+    }
+
     fn render_object<'a>(
         object: &OwnedObject,
         depth: usize,
@@ -231,16 +268,21 @@ impl App {
         use ratatui::style::{Style, Color, Modifier};
 
         let indent = "  ".repeat(depth);
+        let tag_display = if let Some(name) = Self::tag_name(&object.tag.class, object.tag.number) {
+            format!("{} ({})", name, object.tag.number)
+        } else {
+            object.tag.number.to_string()
+        };
         let (label, is_collapsed) = match &object.value {
             crate::der_parser::OwnedValue::Primitive(bytes) => (
-                format!("{}{}: {:?}", indent, object.tag.number, bytes),
+                format!("{}{}: {:?}", indent, tag_display, bytes),
                 false
             ),
             crate::der_parser::OwnedValue::Constructed(children) => {
                 let collapsed = collapsed_nodes.contains(path);
                 let marker = if collapsed { "▶" } else { "▼" };
                 (
-                    format!("{}{} {}: Constructed ({} children)", indent, marker, object.tag.number, children.len()),
+                    format!("{}{} {}: Constructed ({} children)", indent, marker, tag_display, children.len()),
                     collapsed
                 )
             }
@@ -307,6 +349,70 @@ impl App {
             .title(title);
         f.render_widget(block, area);
     }
+
+    fn draw_help_modal(&self, f: &mut Frame) {
+        let area = centered_rect(60, 60, f.size());
+        let help_text = vec![
+            "Help - Key Bindings",
+            "",
+            "General:",
+            "  q         Quit",
+            "  ?         Show this help",
+            "",
+            "Input Mode:",
+            "  Ctrl-R    Parse input",
+            "  Ctrl-U    Clear input",
+            "  Tab/Esc   Switch to View",
+            "  Enter     Newline",
+            "  Any char  Add to buffer",
+            "",
+            "View Mode:",
+            "  i         Switch to Input",
+            "  Tab       Switch to Hex",
+            "  h/l       Collapse/Expand node",
+            "  j/k       Down/Up (navigate)",
+            "  d         Delete node (not implemented)",
+            "  a         Add child (not implemented)",
+            "",
+            "Hex Mode:",
+            "  Tab       Switch to Input",
+            "",
+            "Press any key to close this help."
+        ];
+        let paragraph = Paragraph::new(help_text.join("\n")).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(Span::styled("Help", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)))
+                .border_type(BorderType::Double)
+        ).alignment(Alignment::Left);
+        f.render_widget(Clear, area); // Clear the area first
+        f.render_widget(paragraph, area);
+    }
+}
+
+use ratatui::widgets::Clear;
+use ratatui::layout::Alignment;
+use ratatui::widgets::BorderType;
+
+fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(r);
+    let vertical = popup_layout[1];
+    let horizontal_layout = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(vertical);
+    horizontal_layout[1]
 }
 
 fn try_decode_input(input: &str) -> Result<Vec<u8>, ()> {
