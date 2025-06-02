@@ -274,10 +274,24 @@ impl App {
             object.tag.number.to_string()
         };
         let (label, is_collapsed) = match &object.value {
-            crate::der_parser::OwnedValue::Primitive(bytes) => (
-                format!("{}{}: {:?}", indent, tag_display, bytes),
-                false
-            ),
+            crate::der_parser::OwnedValue::Primitive(bytes) => {
+                // Show string value for string-based tags
+                let string_value = match (&object.tag.class, object.tag.number) {
+                    (crate::der_parser::TagClass::Universal, 19) | // PrintableString
+                    (crate::der_parser::TagClass::Universal, 20) | // T61String
+                    (crate::der_parser::TagClass::Universal, 22) | // IA5String
+                    (crate::der_parser::TagClass::Universal, 23) | // UTCTime
+                    (crate::der_parser::TagClass::Universal, 24)   // GeneralizedTime
+                        => std::str::from_utf8(bytes).ok(),
+                    _ => None,
+                };
+                let value_display = if let Some(s) = string_value {
+                    format!("'{}'", s)
+                } else {
+                    format!("{:?}", bytes)
+                };
+                (format!("{}{}: {}", indent, tag_display, value_display), false)
+            },
             crate::der_parser::OwnedValue::Constructed(children) => {
                 let collapsed = collapsed_nodes.contains(path);
                 let marker = if collapsed { "▶" } else { "▼" };
