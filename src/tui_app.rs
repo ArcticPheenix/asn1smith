@@ -6,7 +6,6 @@ use std::time::Duration;
 use base64::Engine;
 
 use crate::der_parser::{ASN1Object, OwnedObject};
-use crate::format::tui_list_items;
 
 pub enum AppMode {
     Input,
@@ -38,9 +37,12 @@ impl App {
     }
 
     fn move_selection_up(&mut self) {
+        // If we're at the first child in a constructed node, move up to the parent
         if let Some(current_idx) = self.selected_path.last_mut() {
             if *current_idx > 0 {
                 *current_idx -= 1;
+            } else if self.selected_path.len() > 1 {
+                self.selected_path.pop();
             }
         }
     }
@@ -65,14 +67,14 @@ impl App {
 
         // If we can't descend, try moving to the next sibling
         let next_sibling_valid = {
-            if let Some(obj) = self.get_selected_object() {
+            if let Some(_obj) = self.get_selected_object() {
                 let parent_path = if self.selected_path.len() > 1 {
                     &self.selected_path[..self.selected_path.len() - 1]
                 } else {
                     &[]
                 };
 
-                let mut current = if parent_path.is_empty() {
+                let current = if parent_path.is_empty() {
                     &self.parsed_objects
                 } else {
                     let mut parent = &self.parsed_objects[0];
@@ -101,6 +103,7 @@ impl App {
         if next_sibling_valid {
             *self.selected_path.last_mut().unwrap() += 1;
         } else if self.selected_path.len() > 1 {
+            // If no next sibling, move up to parent and try to move to its next sibling
             self.selected_path.pop();
             self.move_selection_down();
         }
@@ -217,19 +220,78 @@ impl App {
         f.render_widget(paragraph, area);
     }
 
-fn draw_tree(&self, f: &mut Frame, area: Rect) {
-    let is_active = matches!(self.mode, AppMode::View);
-    let active_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
-    let title = if is_active {
-        Span::styled("ASN.1 Tree View", active_style)
-    } else {
-        Span::raw("ASN.1 Tree View")
-    };
-    let items = tui_list_items(&self.parsed_objects, &self.selected_path);
-    let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title(title));
-    f.render_widget(list, area);
-}
+    fn render_object<'a>(
+        object: &OwnedObject,
+        depth: usize,
+        path: &mut Vec<usize>,
+        selected_path: &[usize],
+        items: &mut Vec<ListItem<'a>>,
+        collapsed_nodes: &std::collections::HashSet<Vec<usize>>,
+    ) {
+        use ratatui::style::{Style, Color, Modifier};
+
+        let indent = "  ".repeat(depth);
+        let (label, is_collapsed) = match &object.value {
+            crate::der_parser::OwnedValue::Primitive(bytes) => (
+                format!("{}{}: {:?}", indent, object.tag.number, bytes),
+                false
+            ),
+            crate::der_parser::OwnedValue::Constructed(children) => {
+                let collapsed = collapsed_nodes.contains(path);
+                let marker = if collapsed { "▶" } else { "▼" };
+                (
+                    format!("{}{} {}: Constructed ({} children)", indent, marker, object.tag.number, children.len()),
+                    collapsed
+                )
+            }
+        };
+
+        let is_selected = path == selected_path;
+        let item = if is_selected {
+            ListItem::new(label).style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
+        } else {
+            ListItem::new(label)
+        };
+        items.push(item);
+
+        if let crate::der_parser::OwnedValue::Constructed(children) = &object.value {
+            if !is_collapsed {
+                for (i, child) in children.iter().enumerate() {
+                    path.push(i);
+                    Self::render_object(child, depth + 1, path, selected_path, items, collapsed_nodes);
+                    path.pop();
+                }
+            }
+        }
+    }
+
+    fn tui_list_items<'a>(
+        objects: &'a [OwnedObject],
+        selected_path: &[usize],
+        collapsed_nodes: &std::collections::HashSet<Vec<usize>>,
+    ) -> Vec<ListItem<'a>> {
+        let mut items = Vec::new();
+        let mut path = vec![0];
+        for (i, obj) in objects.iter().enumerate() {
+            path[0] = i;
+            Self::render_object(obj, 0, &mut path, selected_path, &mut items, collapsed_nodes);
+        }
+        items
+    }
+
+    fn draw_tree(&self, f: &mut Frame, area: Rect) {
+        let is_active = matches!(self.mode, AppMode::View);
+        let active_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
+        let title = if is_active {
+            Span::styled("ASN.1 Tree View", active_style)
+        } else {
+            Span::raw("ASN.1 Tree View")
+        };
+        let items = Self::tui_list_items(&self.parsed_objects, &self.selected_path, &self.collapsed_nodes);
+        let list = List::new(items)
+            .block(Block::default().borders(Borders::ALL).title(title));
+        f.render_widget(list, area);
+    }
 
     fn draw_hex(&self, f: &mut Frame, area: Rect) {
         let is_active = matches!(self.mode, AppMode::Hex);
@@ -265,38 +327,6 @@ fn try_decode_input(input: &str) -> Result<Vec<u8>, ()> {
     }
 
     Err(())
-}
-
-fn render_object<'a>(
-    object: &OwnedObject,
-    depth: usize,
-    path: &mut Vec<usize>,
-    selected_path: &[usize],
-    items: &mut Vec<ListItem<'a>>,
-) {
-    use ratatui::style::{Style, Color, Modifier};
-
-    let indent = "  ".repeat(depth);
-    let label = format!("{}{}: {}", indent, object.tag.number, match &object.value {
-        crate::der_parser::OwnedValue::Primitive(bytes) => format!("{:?}", bytes),
-        crate::der_parser::OwnedValue::Constructed(_) => "Constructed".to_string(),
-    });
-
-    let is_selected = path == selected_path;
-    let item = if is_selected {
-        ListItem::new(label).style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
-    } else {
-        ListItem::new(label)
-    };
-    items.push(item);
-
-    if let crate::der_parser::OwnedValue::Constructed(children) = &object.value {
-        for (i, child) in children.iter().enumerate() {
-            path.push(i);
-            render_object(child, depth + 1, path, selected_path, items);
-            path.pop();
-        }
-    }
 }
 
 pub fn run_ui<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> std::io::Result<()> {
