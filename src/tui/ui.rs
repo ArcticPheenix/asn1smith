@@ -1,4 +1,4 @@
-use ratatui::{prelude::*, text::Span, widgets::*};
+use ratatui::{prelude::*, text::{Span, Line}, style::Color, widgets::*};
 use crate::tui::app::App;
 use crate::tui::tree::{tui_list_items};
 use ratatui::widgets::Clear;
@@ -131,20 +131,37 @@ impl App {
         use ratatui::widgets::{Block, Borders, Paragraph, Clear};
         let area = centered_rect(70, 60, f.area());
         let Some(obj) = self.get_selected_object() else { return; };
-        let hex = get_object_hex_recursive(obj);
-        let hex_str = hex.iter().map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join(" ");
+        let (tag_bytes, length_bytes, value_bytes) = get_tag_length_value_bytes(obj);
         let mut copied = false;
+        // Compose colored spans
+        let mut spans = vec![];
+        if !tag_bytes.is_empty() {
+            let tag_hex = tag_bytes.iter().map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join(" ");
+            spans.push(Span::styled(tag_hex, Style::default().fg(Color::Cyan)));
+        }
+        if !length_bytes.is_empty() {
+            if !spans.is_empty() { spans.push(Span::raw(" ")); }
+            let len_hex = length_bytes.iter().map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join(" ");
+            spans.push(Span::styled(len_hex, Style::default().fg(Color::White)));
+        }
+        if !value_bytes.is_empty() {
+            if !spans.is_empty() { spans.push(Span::raw(" ")); }
+            let val_hex = value_bytes.iter().map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join(" ");
+            spans.push(Span::styled(val_hex, Style::default().fg(Color::Green)));
+        }
         if self.copy_hex_to_clipboard {
+            let all_bytes = tag_bytes.iter().chain(length_bytes.iter()).chain(value_bytes.iter())
+                .map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join(" ");
             if let Ok(mut ctx) = ClipboardContext::new() {
-                let _ = ctx.set_contents(hex_str.clone());
+                let _ = ctx.set_contents(all_bytes);
                 copied = true;
             }
         }
-        let mut display_str = hex_str;
+        let mut lines = vec![Line::from(spans)];
         if copied {
-            display_str.push_str("\n\nCopied to clipboard!");
+            lines.push(Line::from(vec![Span::styled("Copied to clipboard!", Style::default().fg(Color::Yellow))]));
         }
-        let paragraph = Paragraph::new(display_str)
+        let paragraph = Paragraph::new(lines)
             .block(Block::default().borders(Borders::ALL).title("Hex View").border_type(BorderType::Double));
         f.render_widget(Clear, area);
         f.render_widget(paragraph, area);
@@ -163,6 +180,71 @@ fn get_object_hex_recursive(obj: &crate::der_parser::OwnedObject) -> Vec<u8> {
             out
         }
     }
+}
+
+/// Extracts the tag, length, and value bytes for a single ASN.1 object.
+fn get_tag_length_value_bytes(obj: &crate::der_parser::OwnedObject) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
+    // This assumes the object was parsed from DER and the tag/length/value are contiguous in the original encoding.
+    // If you have the original DER bytes, you should store them per object for perfect accuracy.
+    // Here, we reconstruct them as best as possible from the object fields.
+    use crate::der_parser::OwnedValue;
+    let mut tag_bytes = vec![];
+    let mut length_bytes = vec![];
+    let mut value_bytes = vec![];
+    // Tag encoding (single byte for most tags)
+    let tag = &obj.tag;
+    let mut first_byte = ((match tag.class {
+        crate::der_parser::TagClass::Universal => 0b00,
+        crate::der_parser::TagClass::Application => 0b01,
+        crate::der_parser::TagClass::ContextSpecific => 0b10,
+        crate::der_parser::TagClass::Private => 0b11,
+    }) << 6) as u8;
+    if tag.constructed { first_byte |= 0b0010_0000; }
+    if tag.number < 31 {
+        first_byte |= tag.number as u8;
+        tag_bytes.push(first_byte);
+    } else {
+        first_byte |= 0b0001_1111;
+        tag_bytes.push(first_byte);
+        let mut n = tag.number;
+        let mut stack = vec![];
+        while n > 0 {
+            stack.push((n & 0x7F) as u8);
+            n >>= 7;
+        }
+        for (i, b) in stack.iter().rev().enumerate() {
+            let mut byte = *b;
+            if i != stack.len() - 1 { byte |= 0x80; }
+            tag_bytes.push(byte);
+        }
+    }
+    // Length encoding
+    if obj.length < 128 {
+        length_bytes.push(obj.length as u8);
+    } else {
+        let mut len = obj.length;
+        let mut len_bytes = vec![];
+        while len > 0 {
+            len_bytes.push((len & 0xFF) as u8);
+            len >>= 8;
+        }
+        len_bytes.reverse();
+        length_bytes.push(0x80 | (len_bytes.len() as u8));
+        length_bytes.extend(len_bytes);
+    }
+    // Value bytes
+    match &obj.value {
+        OwnedValue::Primitive(bytes) => value_bytes.extend(bytes),
+        OwnedValue::Constructed(children) => {
+            for child in children {
+                let (t, l, v) = get_tag_length_value_bytes(child);
+                value_bytes.extend(t);
+                value_bytes.extend(l);
+                value_bytes.extend(v);
+            }
+        }
+    }
+    (tag_bytes, length_bytes, value_bytes)
 }
 
 pub fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
