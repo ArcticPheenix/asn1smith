@@ -7,22 +7,32 @@ use ratatui::widgets::BorderType;
 
 impl App {
     pub fn draw(&self, f: &mut Frame) {
+        let is_input_mode = matches!(self.mode, crate::tui::app::AppMode::Input);
+        let constraints = if is_input_mode {
+            [Constraint::Min(10), Constraint::Length(8)] // Large input, small tree
+        } else {
+            [Constraint::Length(3), Constraint::Min(10)] // Small input, large tree
+        };
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(3),
-                Constraint::Min(10),
-                Constraint::Length(5),
-            ])
+            .constraints(constraints)
             .split(f.area());
 
         self.draw_input(f, chunks[0]);
         self.draw_tree(f, chunks[1]);
-        self.draw_hex(f, chunks[2]);
 
         if self.show_help {
             self.draw_help_modal(f);
         }
+        if self.should_show_hex_modal() {
+            self.draw_hex_modal(f);
+        }
+    }
+
+    fn should_show_hex_modal(&self) -> bool {
+        matches!(self.mode, crate::tui::app::AppMode::View)
+            && self.get_selected_object().is_some()
+            && self.show_hex_modal
     }
 
     pub fn draw_input(&self, f: &mut Frame, area: Rect) {
@@ -74,21 +84,6 @@ impl App {
         f.render_widget(list, area);
     }
 
-    pub fn draw_hex(&self, f: &mut Frame, area: Rect) {
-        let is_active = matches!(self.mode, crate::tui::app::AppMode::Hex);
-        let active_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
-        let title = if is_active {
-            Span::styled("Raw DER Hex View", active_style)
-        } else {
-            Span::raw("Raw DER Hex View")
-        };
-
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .title(title);
-        f.render_widget(block, area);
-    }
-
     pub fn draw_help_modal(&self, f: &mut Frame) {
         let area = centered_rect(60, 60, f.area());
         let help_text = vec![
@@ -107,14 +102,13 @@ impl App {
             "",
             "View Mode:",
             "  i         Switch to Input",
-            "  Tab       Switch to Hex",
-            "  h/l       Collapse/Expand node",
+            "  Tab       Switch to Input",
             "  j/k       Down/Up (navigate)",
+            "  h/l       Collapse/Expand node",
             "  d         Delete node (not implemented)",
             "  a         Add child (not implemented)",
-            "",
-            "Hex Mode:",
-            "  Tab       Switch to Input",
+            "  x         Show hex modal for selected item",
+            "  Esc       Close hex modal",
             "",
             "Press any key to close this help."
         ];
@@ -126,6 +120,32 @@ impl App {
         ).alignment(Alignment::Left);
         f.render_widget(Clear, area); // Clear the area first
         f.render_widget(paragraph, area);
+    }
+
+    pub fn draw_hex_modal(&self, f: &mut Frame) {
+        use ratatui::widgets::{Block, Borders, Paragraph, Clear};
+        let area = centered_rect(70, 60, f.area());
+        let Some(obj) = self.get_selected_object() else { return; };
+        let hex = get_object_hex_recursive(obj);
+        let hex_str = hex.iter().map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join(" ");
+        let paragraph = Paragraph::new(hex_str)
+            .block(Block::default().borders(Borders::ALL).title("Hex View").border_type(BorderType::Double));
+        f.render_widget(Clear, area);
+        f.render_widget(paragraph, area);
+    }
+}
+
+fn get_object_hex_recursive(obj: &crate::der_parser::OwnedObject) -> Vec<u8> {
+    match &obj.value {
+        crate::der_parser::OwnedValue::Primitive(bytes) => bytes.clone(),
+        crate::der_parser::OwnedValue::Constructed(children) => {
+            let mut out = Vec::new();
+            // Add this object's own bytes if available (if you want to include tag/length, you may need to store them)
+            for child in children {
+                out.extend(get_object_hex_recursive(child));
+            }
+            out
+        }
     }
 }
 

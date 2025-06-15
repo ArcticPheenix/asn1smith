@@ -5,7 +5,6 @@ use crate::der_parser::OwnedObject;
 pub enum AppMode {
     Input,
     View,
-    Hex,
 }
 
 pub struct App {
@@ -18,6 +17,7 @@ pub struct App {
     pub collapsed_nodes: HashSet<Vec<usize>>,
     pub show_help: bool,
     pub tree_scroll: usize,
+    pub show_hex_modal: bool, // New field
 }
 
 impl App {
@@ -32,6 +32,7 @@ impl App {
             collapsed_nodes: HashSet::new(),
             show_help: false,
             tree_scroll: 0,
+            show_hex_modal: false, // Initialize
         }
     }
 }

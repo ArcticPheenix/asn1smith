@@ -15,6 +15,7 @@ impl App {
                     self.input_buffer.clear();
                 }
                 KeyCode::Esc => self.mode = AppMode::View,
+                KeyCode::Tab => self.mode = AppMode::View,
                 KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     // Parse input buffer and update app state
                     eprintln!("Ctrl-R pressed: parsing input");
@@ -40,7 +41,6 @@ impl App {
                 KeyCode::Backspace => {
                     self.input_buffer.pop();
                 }
-                KeyCode::Tab => self.mode = AppMode::View,
                 KeyCode::Enter => {
                     self.input_buffer.push('\n');
                 }
@@ -50,6 +50,7 @@ impl App {
             AppMode::View => match key.code {
                 KeyCode::Char('q') => self.should_quit = true,
                 KeyCode::Char('i') => self.mode = AppMode::Input,
+                KeyCode::Tab => self.mode = AppMode::Input,
                 KeyCode::Char('h') => self.toggle_collapse(),
                 KeyCode::Char('l') => self.toggle_collapse(),
                 KeyCode::Char('j') => {
@@ -63,13 +64,8 @@ impl App {
                 }
                 KeyCode::Char('d') => {},
                 KeyCode::Char('a') => {},
-                KeyCode::Tab => self.mode = AppMode::Hex,
-                KeyCode::Char('?') => self.show_help = true,
-                _ => {}
-            },
-            AppMode::Hex => match key.code {
-                KeyCode::Tab => self.mode = AppMode::Input,
-                KeyCode::Char('q') => self.should_quit = true,
+                KeyCode::Char('x') => self.show_hex_modal = true,
+                KeyCode::Esc => self.show_hex_modal = false,
                 KeyCode::Char('?') => self.show_help = true,
                 _ => {}
             },
