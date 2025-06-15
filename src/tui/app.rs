@@ -17,7 +17,8 @@ pub struct App {
     pub collapsed_nodes: HashSet<Vec<usize>>,
     pub show_help: bool,
     pub tree_scroll: usize,
-    pub show_hex_modal: bool, // New field
+    pub show_hex_modal: bool,
+    pub copy_hex_to_clipboard: bool, // New field
 }
 
 impl App {
@@ -32,7 +33,8 @@ impl App {
             collapsed_nodes: HashSet::new(),
             show_help: false,
             tree_scroll: 0,
-            show_hex_modal: false, // Initialize
+            show_hex_modal: false,
+            copy_hex_to_clipboard: false, // Initialize
         }
     }
 }

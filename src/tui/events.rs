@@ -8,6 +8,16 @@ impl App {
             self.show_help = false;
             return;
         }
+        if self.show_hex_modal {
+            if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                self.copy_hex_to_clipboard = true;
+                return;
+            } else {
+                self.copy_hex_to_clipboard = false;
+            }
+        } else {
+            self.copy_hex_to_clipboard = false;
+        }
         match self.mode {
             AppMode::Input => match key.code {
                 KeyCode::Char('?') => self.show_help = true,

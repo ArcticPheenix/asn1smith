@@ -4,6 +4,7 @@ use crate::tui::tree::{tui_list_items};
 use ratatui::widgets::Clear;
 use ratatui::layout::Alignment;
 use ratatui::widgets::BorderType;
+use clipboard::{ClipboardProvider, ClipboardContext};
 
 impl App {
     pub fn draw(&self, f: &mut Frame) {
@@ -110,6 +111,10 @@ impl App {
             "  x         Show hex modal for selected item",
             "  Esc       Close hex modal",
             "",
+            "Hex Modal:",
+            "  Ctrl-C    Copy hex to clipboard",
+            "  Esc       Close hex modal",
+            "",
             "Press any key to close this help."
         ];
         let paragraph = Paragraph::new(help_text.join("\n")).block(
@@ -128,7 +133,18 @@ impl App {
         let Some(obj) = self.get_selected_object() else { return; };
         let hex = get_object_hex_recursive(obj);
         let hex_str = hex.iter().map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join(" ");
-        let paragraph = Paragraph::new(hex_str)
+        let mut copied = false;
+        if self.copy_hex_to_clipboard {
+            if let Ok(mut ctx) = ClipboardContext::new() {
+                let _ = ctx.set_contents(hex_str.clone());
+                copied = true;
+            }
+        }
+        let mut display_str = hex_str;
+        if copied {
+            display_str.push_str("\n\nCopied to clipboard!");
+        }
+        let paragraph = Paragraph::new(display_str)
             .block(Block::default().borders(Borders::ALL).title("Hex View").border_type(BorderType::Double));
         f.render_widget(Clear, area);
         f.render_widget(paragraph, area);
