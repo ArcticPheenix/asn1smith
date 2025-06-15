@@ -24,9 +24,10 @@ impl App {
 
         if self.show_help {
             self.draw_help_modal(f);
-        }
-        if self.should_show_hex_modal() {
+        } else if self.should_show_hex_modal() {
             self.draw_hex_modal(f);
+        } else {
+            self.draw_help_hint(f);
         }
     }
 
@@ -165,6 +166,26 @@ impl App {
             .block(Block::default().borders(Borders::ALL).title("Hex View").border_type(BorderType::Double));
         f.render_widget(Clear, area);
         f.render_widget(paragraph, area);
+    }
+
+    /// Draws a small help hint in the bottom right corner.
+    fn draw_help_hint(&self, f: &mut Frame) {
+        let area = f.area();
+        let hint = "Press '?' for help";
+        let width = hint.len() as u16 + 4;
+        let height = 3u16;
+        let x = area.x + area.width.saturating_sub(width);
+        let y = area.y + area.height.saturating_sub(height);
+        let rect = Rect { x, y, width, height };
+        let paragraph = Paragraph::new(hint)
+            .block(Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Plain)
+                .border_style(Style::default().fg(Color::Cyan))
+            )
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(Color::Cyan));
+        f.render_widget(paragraph, rect);
     }
 }
 
