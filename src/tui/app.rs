@@ -17,6 +17,7 @@ pub struct App {
     pub selected_path: Vec<usize>,
     pub collapsed_nodes: HashSet<Vec<usize>>,
     pub show_help: bool,
+    pub tree_scroll: usize,
 }
 
 impl App {
@@ -30,6 +31,7 @@ impl App {
             buffer: Vec::new(),
             collapsed_nodes: HashSet::new(),
             show_help: false,
+            tree_scroll: 0,
         }
     }
 }

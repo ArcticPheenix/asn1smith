@@ -52,8 +52,15 @@ impl App {
                 KeyCode::Char('i') => self.mode = AppMode::Input,
                 KeyCode::Char('h') => self.toggle_collapse(),
                 KeyCode::Char('l') => self.toggle_collapse(),
-                KeyCode::Char('j') => self.move_selection_down(),
-                KeyCode::Char('k') => self.move_selection_up(),
+                KeyCode::Char('j') => {
+                    // Tree area height is the middle chunk (see draw)
+                    let area_height = 10; // Default/fallback
+                    self.move_selection_down(area_height);
+                }
+                KeyCode::Char('k') => {
+                    let area_height = 10;
+                    self.move_selection_up(area_height);
+                }
                 KeyCode::Char('d') => {},
                 KeyCode::Char('a') => {},
                 KeyCode::Tab => self.mode = AppMode::Hex,

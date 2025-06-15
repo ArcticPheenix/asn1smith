@@ -52,8 +52,24 @@ impl App {
         } else {
             Span::raw("ASN.1 Tree View")
         };
-        let items = tui_list_items(&self.parsed_objects, &self.selected_path, &self.collapsed_nodes);
-        let list = List::new(items)
+        let (items, selected_idx) = tui_list_items(&self.parsed_objects, &self.selected_path, &self.collapsed_nodes);
+        let height = area.height as usize;
+        let total_items = items.len();
+        let mut scroll = self.tree_scroll;
+        // Ensure scroll is always valid and the selected item is visible
+        if total_items <= height {
+            scroll = 0;
+        } else if selected_idx < scroll {
+            scroll = selected_idx;
+        } else if selected_idx >= scroll + height {
+            scroll = selected_idx + 1 - height;
+        }
+        if scroll + height > total_items {
+            scroll = total_items.saturating_sub(height);
+        }
+        let end = (scroll + height).min(total_items);
+        let visible_items = items[scroll..end].to_vec();
+        let list = List::new(visible_items)
             .block(Block::default().borders(Borders::ALL).title(title));
         f.render_widget(list, area);
     }
