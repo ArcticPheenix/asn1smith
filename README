@@ -1,0 +1,129 @@
+# asn1smith
+
+A Terminal User Interface (TUI) application built in Rust for decoding and inspecting ASN.1/DER-encoded data. It allows users to input data in hex, base64, or PEM-like formats, parse it into a tree structure, navigate the ASN.1 objects, and view details like hex representations.
+
+## Features
+
+- **Flexible Input Decoding**: Automatically detects and decodes input as hex, base64, or strips PEM boundaries for raw DER bytes.
+- **Tree View**: Displays parsed ASN.1 structures in a collapsible tree, showing tags, lengths, and values (with interpretation for common types like INTEGER, OID, strings, etc.).
+- **Navigation**: Keyboard-based navigation (up/down, expand/collapse) in the tree view.
+- **Hex Modal**: View the hex bytes of the selected ASN.1 object's tag, length, and value, with color-coding and clipboard copy support.
+- **Help System**: Built-in help modal with key bindings and a persistent hint.
+- **Modes**: Switch between input editing and view modes seamlessly.
+- **Error Handling**: Basic parsing errors are logged (future improvements for UI feedback planned).
+
+Supports common ASN.1 universal tags (e.g., SEQUENCE, INTEGER, OID, strings, times) with pretty-printing in the tree.
+
+## Installation
+
+### Prerequisites
+
+- Rust (edition 2024 or compatible; tested with Rust 1.79+ as of 2025).
+- Cargo (Rust's package manager).
+
+### Building from Source
+
+1. Clone the repository:
+   ```
+   git clone https://github.com/yourusername/asn1smith.git
+   cd asn1smith
+   ```
+
+2. Build and run:
+   ```
+   cargo build --release
+   cargo run --release
+   ```
+
+   Alternatively, install to your PATH:
+   ```
+   cargo install --path .
+   asn1smith
+   ```
+
+## Usage
+
+1. Launch the application: `cargo run` or `./target/release/asn1smith`.
+2. In **Input Mode** (default):
+   - Type or paste your ASN.1/DER data (hex, base64, or PEM-wrapped).
+   - Press `Ctrl-R` to parse the input.
+   - If successful, it switches to **View Mode** with the parsed tree.
+3. In **View Mode**:
+   - Navigate the tree with `j` (down), `k` (up).
+   - Expand/collapse constructed nodes with `l` (expand) or `h` (collapse).
+   - Press `x` to open a hex modal for the selected node.
+   - In hex modal: `Ctrl-C` to copy hex to clipboard, `Esc` to close.
+4. Switch modes: `i` or `Tab` to input, `Esc` to view.
+5. Quit: `q` in view mode.
+6. Help: `?` to toggle the help modal.
+
+### Example Input
+
+- Hex: `3006020101020102` (a simple SEQUENCE with two INTEGERs).
+- Base64: `MAYCAQID` (equivalent to a small DER blob).
+- PEM-like: 
+  ```
+  -----BEGIN CERTIFICATE-----
+  MIID... (base64 lines)
+  -----END CERTIFICATE-----
+  ```
+  The app strips boundaries and decodes base64.
+
+If parsing fails, check console output for errors (e.g., invalid input).
+
+## Key Bindings
+
+From the in-app help modal:
+
+### General
+- `q`: Quit
+- `?`: Show help
+
+### Input Mode
+- `Ctrl-R`: Parse input
+- `Ctrl-U`: Clear input
+- `Tab`/`Esc`: Switch to View
+- `Enter`: Newline
+- Any char: Add to buffer
+- `Backspace`: Delete char
+
+### View Mode
+- `i`/`Tab`: Switch to Input
+- `j`/`k`: Down/Up (navigate)
+- `h`/`l`: Collapse/Expand node
+- `d`: Delete node (not implemented yet)
+- `a`: Add child (not implemented yet)
+- `x`: Show hex modal for selected item
+- `Esc`: Close hex modal
+
+### Hex Modal
+- `Ctrl-C`: Copy hex to clipboard
+- `Esc`: Close hex modal
+
+## Dependencies
+
+From `Cargo.toml`:
+
+- `base64 = "0.22.1"`
+- `crossterm = "0.29.0"`
+- `hex = "0.4.3"`
+- `num-bigint = "0.4.6"`
+- `ratatui = "0.29.0"`
+- `clipboard = "0.5.0"`
+
+Note: The `clipboard` crate may be deprecated; consider updating to `arboard` in future versions for better cross-platform support.
+
+## Project Structure
+
+- `src/der_parser.rs`: Core ASN.1/DER parsing logic and tests.
+- `src/tui/`: TUI components (app state, events, UI rendering, tree logic).
+- `src/main.rs`: Entry point with TUI loop.
+- `Cargo.toml`: Dependencies and package info.
+
+## Contributing
+
+Contributions welcome! Open issues for bugs or features (e.g., node editing, better error UI, more tag support). Pull requests should include tests where possible.
+
+## License
+
+This project is unlicensed. Feel free to use and modify as needed. If you'd like to add a license (e.g., MIT), suggest one in an issue.
