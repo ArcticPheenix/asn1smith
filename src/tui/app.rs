@@ -1,5 +1,6 @@
-use std::collections::HashSet;
+// src/tui/app.rs
 use crate::der_parser::OwnedObject;
+use std::collections::HashSet;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AppMode {

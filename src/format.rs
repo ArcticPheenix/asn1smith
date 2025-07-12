@@ -1,8 +1,8 @@
 // src/format.rs
 
-use crate::der_parser::{ASN1Object, TagClass, ASN1Value, OwnedObject, OwnedValue};
+use crate::der_parser::{ASN1Object, ASN1Value, OwnedObject, OwnedValue, TagClass};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::ListItem;
-use ratatui::style::{Style, Color, Modifier};
 
 pub fn print_asn1_object(obj: &ASN1Object, indent: usize, pretty: bool) {
     let indent_str = "  ".repeat(indent);
@@ -58,7 +58,13 @@ pub fn print_tag_value(obj: &ASN1Object, indent_str: &str, pretty: bool) {
             let tag_color = "\x1b[1;34m";
             let reset = "\x1b[0m";
             if pretty {
-                println!("{}  {}Constructed:{} {} children:", indent_str, tag_color, reset, children.len());
+                println!(
+                    "{}  {}Constructed:{} {} children:",
+                    indent_str,
+                    tag_color,
+                    reset,
+                    children.len()
+                );
                 for child in children {
                     print_asn1_object(child, indent_str.len() / 2 + 1, pretty);
                 }
@@ -88,18 +94,38 @@ fn interpret_value(obj: &ASN1Object, indent_str: &str, pretty: bool, bytes: &[u8
             }
             2 => {
                 let value = num_bigint::BigUint::from_bytes_be(bytes);
-                println!("{}  {}INTEGER:{} {} ({} bytes)", indent_str, tag_color, reset, value, bytes.len());
+                println!(
+                    "{}  {}INTEGER:{} {} ({} bytes)",
+                    indent_str,
+                    tag_color,
+                    reset,
+                    value,
+                    bytes.len()
+                );
             }
             3 => {
                 if let Some((&padding_bits, bits)) = bytes.split_first() {
-                    let bit_len = bits.len().saturating_mul(8).saturating_sub(padding_bits as usize);
-                    println!("{}  {}BIT STRING:{} ({} bits, {} padding): {:02X?}", indent_str, tag_color, reset, bit_len, padding_bits, bits);
+                    let bit_len = bits
+                        .len()
+                        .saturating_mul(8)
+                        .saturating_sub(padding_bits as usize);
+                    println!(
+                        "{}  {}BIT STRING:{} ({} bits, {} padding): {:02X?}",
+                        indent_str, tag_color, reset, bit_len, padding_bits, bits
+                    );
                 } else {
                     println!("{}  {}BIT STRING:{} <empty>", indent_str, tag_color, reset);
                 }
             }
             4 => {
-                println!("{}  {}OCTET STRING:{} ({} bytes): {:02X?}", indent_str, tag_color, reset, bytes.len(), bytes);
+                println!(
+                    "{}  {}OCTET STRING:{} ({} bytes): {:02X?}",
+                    indent_str,
+                    tag_color,
+                    reset,
+                    bytes.len(),
+                    bytes
+                );
             }
             5 => {
                 println!("{}  {}NULL:{} (0 bytes)", indent_str, tag_color, reset);
@@ -115,25 +141,66 @@ fn interpret_value(obj: &ASN1Object, indent_str: &str, pretty: bool, bytes: &[u8
                             value = 0;
                         }
                     }
-                    println!("{}  {}OID:{} {} ({} bytes)", indent_str, tag_color, reset, oid.join("."), bytes.len());
+                    println!(
+                        "{}  {}OID:{} {} ({} bytes)",
+                        indent_str,
+                        tag_color,
+                        reset,
+                        oid.join("."),
+                        bytes.len()
+                    );
                 } else {
                     println!("{}  {}OID:{} <empty>", indent_str, tag_color, reset);
                 }
             }
             19 | 20 | 22 => match std::str::from_utf8(bytes) {
-                Ok(text) => println!("{}  {}String:{} '{}' ({} bytes)", indent_str, tag_color, reset, text, bytes.len()),
-                Err(_) => println!("{}  {}String:{} <invalid UTF-8> ({:?})", indent_str, tag_color, reset, bytes),
+                Ok(text) => println!(
+                    "{}  {}String:{} '{}' ({} bytes)",
+                    indent_str,
+                    tag_color,
+                    reset,
+                    text,
+                    bytes.len()
+                ),
+                Err(_) => println!(
+                    "{}  {}String:{} <invalid UTF-8> ({:?})",
+                    indent_str, tag_color, reset, bytes
+                ),
             },
             23 | 24 => match std::str::from_utf8(bytes) {
-                Ok(time) => println!("{}  {}Time:{} '{}' ({} bytes)", indent_str, tag_color, reset, time, bytes.len()),
-                Err(_) => println!("{}  {}Time:{} <invalid UTF-8> ({:?})", indent_str, tag_color, reset, bytes),
+                Ok(time) => println!(
+                    "{}  {}Time:{} '{}' ({} bytes)",
+                    indent_str,
+                    tag_color,
+                    reset,
+                    time,
+                    bytes.len()
+                ),
+                Err(_) => println!(
+                    "{}  {}Time:{} <invalid UTF-8> ({:?})",
+                    indent_str, tag_color, reset, bytes
+                ),
             },
             _ => {
-                println!("{}  {}Primitive:{} ({} bytes): {:02X?}", indent_str, tag_color, reset, bytes.len(), bytes);
+                println!(
+                    "{}  {}Primitive:{} ({} bytes): {:02X?}",
+                    indent_str,
+                    tag_color,
+                    reset,
+                    bytes.len(),
+                    bytes
+                );
             }
         },
         _ => {
-            println!("{}  {}Primitive:{} ({} bytes): {:02X?}", indent_str, tag_color, reset, bytes.len(), bytes);
+            println!(
+                "{}  {}Primitive:{} ({} bytes): {:02X?}",
+                indent_str,
+                tag_color,
+                reset,
+                bytes.len(),
+                bytes
+            );
         }
     }
 }
@@ -153,24 +220,24 @@ pub fn tui_list_items(objects: &[OwnedObject], selected_path: &[usize]) -> Vec<L
     ) {
         // reuse your CLI formatting logic to build the label:
         let tag_name: Option<&str> = match (&obj.tag.class, obj.tag.number) {
-        (TagClass::Universal, 1) => Some("BOOLEAN"),
-        (TagClass::Universal, 2) => Some("INTEGER"),
-        (TagClass::Universal, 3) => Some("BIT STRING"),
-        (TagClass::Universal, 4) => Some("OCTET STRING"),
-        (TagClass::Universal, 5) => Some("NULL"),
-        (TagClass::Universal, 6) => Some("OBJECT IDENTIFIER"),
-        (TagClass::Universal, 10) => Some("ENUMERATED"),
-        (TagClass::Universal, 16) => Some("SEQUENCE"),
-        (TagClass::Universal, 17) => Some("SET"),
-        (TagClass::Universal, 19) => Some("PrintableString"),
-        (TagClass::Universal, 20) => Some("T61String"),
-        (TagClass::Universal, 22) => Some("IA5String"),
-        (TagClass::Universal, 23) => Some("UTCTime"),
-        (TagClass::Universal, 24) => Some("GeneralizedTime"),
-        _                         => Some(""),
+            (TagClass::Universal, 1) => Some("BOOLEAN"),
+            (TagClass::Universal, 2) => Some("INTEGER"),
+            (TagClass::Universal, 3) => Some("BIT STRING"),
+            (TagClass::Universal, 4) => Some("OCTET STRING"),
+            (TagClass::Universal, 5) => Some("NULL"),
+            (TagClass::Universal, 6) => Some("OBJECT IDENTIFIER"),
+            (TagClass::Universal, 10) => Some("ENUMERATED"),
+            (TagClass::Universal, 16) => Some("SEQUENCE"),
+            (TagClass::Universal, 17) => Some("SET"),
+            (TagClass::Universal, 19) => Some("PrintableString"),
+            (TagClass::Universal, 20) => Some("T61String"),
+            (TagClass::Universal, 22) => Some("IA5String"),
+            (TagClass::Universal, 23) => Some("UTCTime"),
+            (TagClass::Universal, 24) => Some("GeneralizedTime"),
+            _ => Some(""),
         };
 
-// before you recurse, replace the old label logic with:
+        // before you recurse, replace the old label logic with:
 
         let indent = "  ".repeat(depth);
 
@@ -196,7 +263,9 @@ pub fn tui_list_items(objects: &[OwnedObject], selected_path: &[usize]) -> Vec<L
 
         let is_selected = path == selected_path;
         let style = if is_selected {
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD)
         } else {
             Style::default()
         };

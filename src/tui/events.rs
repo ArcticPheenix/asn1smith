@@ -1,6 +1,7 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use crate::tui::app::{App, AppMode};
+// src/tui/events.rs
 use crate::der_parser::try_decode_input;
+use crate::tui::app::{App, AppMode};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 impl App {
     pub fn handle_input(&mut self, key: KeyEvent) {
@@ -72,8 +73,8 @@ impl App {
                     let area_height = 10;
                     self.move_selection_up(area_height);
                 }
-                KeyCode::Char('d') => {},
-                KeyCode::Char('a') => {},
+                KeyCode::Char('d') => {}
+                KeyCode::Char('a') => {}
                 KeyCode::Char('x') => self.show_hex_modal = true,
                 KeyCode::Esc => self.show_hex_modal = false,
                 KeyCode::Char('?') => self.show_help = true,

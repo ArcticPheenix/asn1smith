@@ -1,13 +1,17 @@
+// src/main.rs
 mod der_parser;
 mod format;
 pub mod tui;
 
-use tui::app::App;
-use ratatui::prelude::*;
-use crossterm::{execute, terminal::{enable_raw_mode, disable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen}};
-use std::io::stdout;
 use crossterm::event::{self, Event};
+use crossterm::{
+    execute,
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+};
+use ratatui::prelude::*;
+use std::io::stdout;
 use std::time::Duration;
+use tui::app::App;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     enable_raw_mode()?;

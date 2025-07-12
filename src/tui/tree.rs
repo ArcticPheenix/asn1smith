@@ -1,7 +1,8 @@
+// src/tui/tree.rs
 use crate::der_parser::{OwnedObject, TagClass};
+use crate::tui::app::App;
 use ratatui::widgets::ListItem;
 use std::collections::HashSet;
-use crate::tui::app::App;
 
 pub fn tag_name(class: &TagClass, number: u32) -> Option<&'static str> {
     match (class, number) {
@@ -33,7 +34,15 @@ pub fn tui_list_items<'a>(
     let mut selected_idx = 0;
     for (i, obj) in objects.iter().enumerate() {
         path[0] = i;
-        render_object_with_index(obj, 0, &mut path, selected_path, &mut items, collapsed_nodes, &mut selected_idx);
+        render_object_with_index(
+            obj,
+            0,
+            &mut path,
+            selected_path,
+            &mut items,
+            collapsed_nodes,
+            &mut selected_idx,
+        );
     }
     (items, selected_idx)
 }
@@ -47,7 +56,7 @@ fn render_object_with_index<'a>(
     collapsed_nodes: &HashSet<Vec<usize>>,
     selected_idx: &mut usize,
 ) {
-    use ratatui::style::{Style, Color, Modifier};
+    use ratatui::style::{Color, Modifier, Style};
     let indent = "  ".repeat(depth);
     let tag_display = if let Some(name) = tag_name(&object.tag.class, object.tag.number) {
         format!("{} ({})", name, object.tag.number)
@@ -70,14 +79,23 @@ fn render_object_with_index<'a>(
             } else {
                 format!("{:?}", bytes)
             };
-            (format!("{}{}: {}", indent, tag_display, value_display), false)
-        },
+            (
+                format!("{}{}: {}", indent, tag_display, value_display),
+                false,
+            )
+        }
         crate::der_parser::OwnedValue::Constructed(children) => {
             let collapsed = collapsed_nodes.contains(path);
             let marker = if collapsed { "▶" } else { "▼" };
             (
-                format!("{}{} {}: Constructed ({} children)", indent, marker, tag_display, children.len()),
-                collapsed
+                format!(
+                    "{}{} {}: Constructed ({} children)",
+                    indent,
+                    marker,
+                    tag_display,
+                    children.len()
+                ),
+                collapsed,
             )
         }
     };
@@ -86,7 +104,11 @@ fn render_object_with_index<'a>(
         *selected_idx = items.len();
     }
     let item = if is_selected {
-        ListItem::new(label).style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
+        ListItem::new(label).style(
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )
     } else {
         ListItem::new(label)
     };
@@ -95,7 +117,15 @@ fn render_object_with_index<'a>(
         if !is_collapsed {
             for (i, child) in children.iter().enumerate() {
                 path.push(i);
-                render_object_with_index(child, depth + 1, path, selected_path, items, collapsed_nodes, selected_idx);
+                render_object_with_index(
+                    child,
+                    depth + 1,
+                    path,
+                    selected_path,
+                    items,
+                    collapsed_nodes,
+                    selected_idx,
+                );
                 path.pop();
             }
         }
@@ -113,7 +143,9 @@ impl App {
                 // Move to the last visible descendant of the previous sibling
                 while let Some(obj) = self.get_selected_object() {
                     if let crate::der_parser::OwnedValue::Constructed(children) = &obj.value {
-                        if !children.is_empty() && !self.collapsed_nodes.contains(&self.selected_path) {
+                        if !children.is_empty()
+                            && !self.collapsed_nodes.contains(&self.selected_path)
+                        {
                             self.selected_path.push(children.len() - 1);
                         } else {
                             break;
@@ -190,7 +222,11 @@ impl App {
 
     /// Call this after changing selection to ensure selected item is visible.
     pub fn update_tree_scroll(&mut self, area_height: usize) {
-        let (items, selected_idx) = crate::tui::tree::tui_list_items(&self.parsed_objects, &self.selected_path, &self.collapsed_nodes);
+        let (items, selected_idx) = crate::tui::tree::tui_list_items(
+            &self.parsed_objects,
+            &self.selected_path,
+            &self.collapsed_nodes,
+        );
         if selected_idx < self.tree_scroll {
             self.tree_scroll = selected_idx;
         } else if selected_idx >= self.tree_scroll + area_height {

@@ -65,16 +65,17 @@ impl<'a> From<&ASN1Object<'a>> for OwnedObject {
                 OwnedValue::Constructed(owned_children)
             }
         };
-        OwnedObject { tag: src.tag.clone(), length, value }
+        OwnedObject {
+            tag: src.tag.clone(),
+            length,
+            value,
+        }
     }
 }
 
 impl<'a> DerParser<'a> {
     pub fn new(input: &'a [u8]) -> Self {
-        Self {
-            input,
-            position: 0,
-        }
+        Self { input, position: 0 }
     }
 
     pub fn peek(&self) -> Option<u8> {
@@ -161,7 +162,7 @@ impl<'a> DerParser<'a> {
     }
 
     pub fn read_value(&mut self, length: usize) -> Option<&'a [u8]> {
-        self.read_n(length)   
+        self.read_n(length)
     }
 
     pub fn parse_tlv(&mut self) -> Result<ASN1Object<'a>, ASN1Error> {
@@ -176,11 +177,7 @@ impl<'a> DerParser<'a> {
         } else {
             ASN1Value::Primitive(value)
         };
-        Ok(ASN1Object {
-            tag,
-            length,
-            value,
-        })
+        Ok(ASN1Object { tag, length, value })
     }
 
     pub fn parse_all(&mut self) -> Result<Vec<ASN1Object<'a>>, ASN1Error> {
@@ -190,7 +187,7 @@ impl<'a> DerParser<'a> {
             let object = self.parse_tlv();
             match object {
                 Ok(object) => der_data.push(object),
-                Err(err) => return Err(err)
+                Err(err) => return Err(err),
             }
         }
         Ok(der_data)
@@ -314,7 +311,6 @@ mod tests {
         }
     }
 
-
     #[test]
     fn test_parse_tlv_constructed_sequence() {
         let data = [0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x02];
@@ -330,7 +326,7 @@ mod tests {
                 assert_eq!(children.len(), 2);
                 assert_eq!(children[0].tag.number, 2); // INTEGER
                 assert_eq!(children[1].tag.number, 2); // INTEGER
-            },
+            }
             _ => panic!("Expected constructed value"),
         }
     }
@@ -340,7 +336,7 @@ mod tests {
         let data = [
             0x02, 0x01, 0x01, // INTEGER 1
             0x02, 0x01, 0x02, // INTEGER 2
-            0x02, 0x01, 0x03  // INTEGER 3
+            0x02, 0x01, 0x03, // INTEGER 3
         ];
         let mut parser = DerParser::new(&data);
         let result = parser.parse_all().unwrap();
@@ -362,11 +358,11 @@ mod tests {
     #[test]
     fn test_parse_all_nested_sequence() {
         let data = [
-            0x30, 0x0B,             // SEQUENCE, length 11
-              0x02, 0x01, 0x01,     // INTEGER 1
-              0x30, 0x06,           // SEQUENCE, length 6
-                0x02, 0x01, 0x02,   // INTEGER 2
-                0x02, 0x01, 0x03    // INTEGER 3
+            0x30, 0x0B, // SEQUENCE, length 11
+            0x02, 0x01, 0x01, // INTEGER 1
+            0x30, 0x06, // SEQUENCE, length 6
+            0x02, 0x01, 0x02, // INTEGER 2
+            0x02, 0x01, 0x03, // INTEGER 3
         ];
 
         let mut parser = DerParser::new(&data);

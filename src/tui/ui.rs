@@ -1,10 +1,16 @@
-use ratatui::{prelude::*, text::{Span, Line}, style::Color, widgets::*};
+// src/tui/ui.rs
 use crate::tui::app::App;
-use crate::tui::tree::{tui_list_items};
-use ratatui::widgets::Clear;
+use crate::tui::tree::tui_list_items;
+use clipboard::{ClipboardContext, ClipboardProvider};
 use ratatui::layout::Alignment;
 use ratatui::widgets::BorderType;
-use clipboard::{ClipboardProvider, ClipboardContext};
+use ratatui::widgets::Clear;
+use ratatui::{
+    prelude::*,
+    style::Color,
+    text::{Line, Span},
+    widgets::*,
+};
 
 impl App {
     pub fn draw(&self, f: &mut Frame) {
@@ -39,7 +45,9 @@ impl App {
 
     pub fn draw_input(&self, f: &mut Frame, area: Rect) {
         let is_active = matches!(self.mode, crate::tui::app::AppMode::Input);
-        let active_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
+        let active_style = Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD);
         let title = if is_active {
             Span::styled("Input", active_style)
         } else {
@@ -47,24 +55,26 @@ impl App {
         };
 
         let paragraph = Paragraph::new(self.input_buffer.as_str())
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(title)
-            )
+            .block(Block::default().borders(Borders::ALL).title(title))
             .wrap(Wrap { trim: false });
         f.render_widget(paragraph, area);
     }
 
     pub fn draw_tree(&self, f: &mut Frame, area: Rect) {
         let is_active = matches!(self.mode, crate::tui::app::AppMode::View);
-        let active_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
+        let active_style = Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD);
         let title = if is_active {
             Span::styled("ASN.1 Tree View", active_style)
         } else {
             Span::raw("ASN.1 Tree View")
         };
-        let (items, selected_idx) = tui_list_items(&self.parsed_objects, &self.selected_path, &self.collapsed_nodes);
+        let (items, selected_idx) = tui_list_items(
+            &self.parsed_objects,
+            &self.selected_path,
+            &self.collapsed_nodes,
+        );
         let height = area.height as usize;
         let total_items = items.len();
         let mut scroll = self.tree_scroll;
@@ -81,8 +91,8 @@ impl App {
         }
         let end = (scroll + height).min(total_items);
         let visible_items = items[scroll..end].to_vec();
-        let list = List::new(visible_items)
-            .block(Block::default().borders(Borders::ALL).title(title));
+        let list =
+            List::new(visible_items).block(Block::default().borders(Borders::ALL).title(title));
         f.render_widget(list, area);
     }
 
@@ -116,43 +126,73 @@ impl App {
             "  Ctrl-C    Copy hex to clipboard",
             "  Esc       Close hex modal",
             "",
-            "Press any key to close this help."
+            "Press any key to close this help.",
         ];
-        let paragraph = Paragraph::new(help_text.join("\n")).block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(Span::styled("Help", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)))
-                .border_type(BorderType::Double)
-        ).alignment(Alignment::Left);
+        let paragraph = Paragraph::new(help_text.join("\n"))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(Span::styled(
+                        "Help",
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD),
+                    ))
+                    .border_type(BorderType::Double),
+            )
+            .alignment(Alignment::Left);
         f.render_widget(Clear, area); // Clear the area first
         f.render_widget(paragraph, area);
     }
 
     pub fn draw_hex_modal(&self, f: &mut Frame) {
-        use ratatui::widgets::{Block, Borders, Paragraph, Clear};
+        use ratatui::widgets::{Block, Borders, Clear, Paragraph};
         let area = centered_rect(70, 60, f.area());
-        let Some(obj) = self.get_selected_object() else { return; };
+        let Some(obj) = self.get_selected_object() else {
+            return;
+        };
         let (tag_bytes, length_bytes, value_bytes) = get_tag_length_value_bytes(obj);
         let mut copied = false;
         // Compose colored spans
         let mut spans = vec![];
         if !tag_bytes.is_empty() {
-            let tag_hex = tag_bytes.iter().map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join(" ");
+            let tag_hex = tag_bytes
+                .iter()
+                .map(|b| format!("{:02X}", b))
+                .collect::<Vec<_>>()
+                .join(" ");
             spans.push(Span::styled(tag_hex, Style::default().fg(Color::Cyan)));
         }
         if !length_bytes.is_empty() {
-            if !spans.is_empty() { spans.push(Span::raw(" ")); }
-            let len_hex = length_bytes.iter().map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join(" ");
+            if !spans.is_empty() {
+                spans.push(Span::raw(" "));
+            }
+            let len_hex = length_bytes
+                .iter()
+                .map(|b| format!("{:02X}", b))
+                .collect::<Vec<_>>()
+                .join(" ");
             spans.push(Span::styled(len_hex, Style::default().fg(Color::White)));
         }
         if !value_bytes.is_empty() {
-            if !spans.is_empty() { spans.push(Span::raw(" ")); }
-            let val_hex = value_bytes.iter().map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join(" ");
+            if !spans.is_empty() {
+                spans.push(Span::raw(" "));
+            }
+            let val_hex = value_bytes
+                .iter()
+                .map(|b| format!("{:02X}", b))
+                .collect::<Vec<_>>()
+                .join(" ");
             spans.push(Span::styled(val_hex, Style::default().fg(Color::Green)));
         }
         if self.copy_hex_to_clipboard {
-            let all_bytes = tag_bytes.iter().chain(length_bytes.iter()).chain(value_bytes.iter())
-                .map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join(" ");
+            let all_bytes = tag_bytes
+                .iter()
+                .chain(length_bytes.iter())
+                .chain(value_bytes.iter())
+                .map(|b| format!("{:02X}", b))
+                .collect::<Vec<_>>()
+                .join(" ");
             if let Ok(mut ctx) = ClipboardContext::new() {
                 let _ = ctx.set_contents(all_bytes);
                 copied = true;
@@ -160,10 +200,17 @@ impl App {
         }
         let mut lines = vec![Line::from(spans)];
         if copied {
-            lines.push(Line::from(vec![Span::styled("Copied to clipboard!", Style::default().fg(Color::Yellow))]));
+            lines.push(Line::from(vec![Span::styled(
+                "Copied to clipboard!",
+                Style::default().fg(Color::Yellow),
+            )]));
         }
-        let paragraph = Paragraph::new(lines)
-            .block(Block::default().borders(Borders::ALL).title("Hex View").border_type(BorderType::Double));
+        let paragraph = Paragraph::new(lines).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Hex View")
+                .border_type(BorderType::Double),
+        );
         f.render_widget(Clear, area);
         f.render_widget(paragraph, area);
     }
@@ -176,12 +223,18 @@ impl App {
         let height = 3u16;
         let x = area.x + area.width.saturating_sub(width);
         let y = area.y + area.height.saturating_sub(height);
-        let rect = Rect { x, y, width, height };
+        let rect = Rect {
+            x,
+            y,
+            width,
+            height,
+        };
         let paragraph = Paragraph::new(hint)
-            .block(Block::default()
-                .borders(Borders::ALL)
-                .border_type(BorderType::Plain)
-                .border_style(Style::default().fg(Color::Cyan))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Plain)
+                    .border_style(Style::default().fg(Color::Cyan)),
             )
             .alignment(Alignment::Center)
             .style(Style::default().fg(Color::Cyan));
@@ -220,7 +273,9 @@ fn get_tag_length_value_bytes(obj: &crate::der_parser::OwnedObject) -> (Vec<u8>,
         crate::der_parser::TagClass::ContextSpecific => 0b10,
         crate::der_parser::TagClass::Private => 0b11,
     }) << 6) as u8;
-    if tag.constructed { first_byte |= 0b0010_0000; }
+    if tag.constructed {
+        first_byte |= 0b0010_0000;
+    }
     if tag.number < 31 {
         first_byte |= tag.number as u8;
         tag_bytes.push(first_byte);
@@ -235,7 +290,9 @@ fn get_tag_length_value_bytes(obj: &crate::der_parser::OwnedObject) -> (Vec<u8>,
         }
         for (i, b) in stack.iter().rev().enumerate() {
             let mut byte = *b;
-            if i != stack.len() - 1 { byte |= 0x80; }
+            if i != stack.len() - 1 {
+                byte |= 0x80;
+            }
             tag_bytes.push(byte);
         }
     }
